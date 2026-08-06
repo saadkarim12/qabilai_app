@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.gitignore
+# .env* are ignored on purpose: NEXT_PUBLIC_KABIL_API is injected as a build
+# arg, so keep .env.local (which points at localhost) out of the image build.
+.env
+.env.*
+npm-debug.log*
+Dockerfile
+.dockerignore
+README.md
+AGENTS.md
+CLAUDE.md
+docs

@@ -1,0 +1,41 @@
+# Production frontend service for the Hetzner VM.
+#
+# Runs as its own compose project but joins the backend's `kabil_default`
+# network (external) so the backend's Caddy can reverse-proxy to `fe:3000`.
+# The deploy script rsyncs this repo up and runs:
+#
+#   NEXT_PUBLIC_KABIL_API=https://api.167-233-172-142.sslip.io \
+#     docker compose -f docker-compose.prod.yml up -d --build
+#
+# See DEPLOYMENT.md.
+name: kabil-fe
+
+services:
+  fe:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Build-time bake of the backend API URL into the client bundle.
+        NEXT_PUBLIC_KABIL_API: ${NEXT_PUBLIC_KABIL_API:-https://api.167-233-172-142.sslip.io}
+    image: kabil-frontend:latest
+    restart: unless-stopped
+    # Not published to the host — Caddy (on kabil_default) proxies to it.
+    expose:
+      - "3000"
+    networks:
+      - kabil_default
+    healthcheck:
+      # Any non-5xx (incl. auth redirects) means the server is up.
+      test:
+        - "CMD-SHELL"
+        - "node -e \"require('http').get('http://localhost:3000/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+networks:
+  # Created by the backend compose project (name: kabil -> kabil_default).
+  kabil_default:
+    external: true

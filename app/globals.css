@@ -1,0 +1,14 @@
+/* MUI's <CssBaseline /> handles the reset; keep this minimal. */
+html,
+body {
+  padding: 0;
+  margin: 0;
+  /* Crisp text rendering — kills the "blurry" look of the default smoothing. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+}
