@@ -1,0 +1,14 @@
+Hi {{ candidate_name }},
+
+Good news — you've progressed to the interview stage for the {{ job_title }} role{% if company_name %} at {{ company_name }}{% endif %}.
+
+Please pick a time that works for you using the link below. You'll see live availability and get a calendar invite as soon as you book:
+
+{{ booking_url }}
+
+This link is personal to you, so please don't share it.
+
+We look forward to speaking with you.
+
+Best regards,
+The Hiring Team

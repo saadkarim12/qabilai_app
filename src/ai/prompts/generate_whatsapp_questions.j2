@@ -1,0 +1,33 @@
+JOB POSTING DETAILS
+===================
+
+Title:           {{ title }}
+Hiring company:  {{ hiring_company }}
+Location:        {{ city }}, {{ country }}
+Employment type: {{ employment_type }}
+Work mode:       {{ work_mode }}
+Compensation:    {{ compensation }}
+Notice period:   {{ notice_period or '(not specified)' }}
+Min experience:  {{ min_experience_years }} year(s)
+Visa stance:     {{ visa_requirement or '(not specified)' }}
+Languages req'd: {{ languages_required | join(', ') if languages_required else '(none)' }}
+
+Required skills:  {{ required_skills | join(', ') if required_skills else '(none listed)' }}
+Preferred skills: {{ preferred_skills | join(', ') if preferred_skills else '(none listed)' }}
+
+JOB DESCRIPTION
+===============
+{{ job_description }}
+
+TASK
+====
+Generate up to 3 bilingual background-validation questions that verify this
+candidate's hands-on experience with the SKILLS this role lists — both the
+Required skills and the Preferred skills above. Each question must target a
+specific named skill from those lists (prefer required skills first; cover
+preferred skills if the cap allows) and ask how recently and in what context
+the candidate used it, or for a concrete example. Skills ONLY — do NOT ask
+about work history, employer/job title, employment dates, reason for leaving,
+references, or any topic already covered by the fixed questions (salary, visa,
+notice period, employment type, work mode, reason for job-seeking), and do not
+ask about nationality. Follow the system instructions exactly. Output JSON only.

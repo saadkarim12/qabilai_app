@@ -1,0 +1,2563 @@
+{
+  "info": {
+    "_postman_id": "b9d8a4f2-1c4e-4a7b-9a3d-7a51f2c0e001",
+    "name": "Kabil.ai Backend",
+    "description": "Manual-test collection for the Kabil.ai FastAPI backend.\n\nCovers every endpoint shipped through Step 2.5:\n\n- Health\n- Auth (Login / Me / Logout)\n- Jobs (Create / List / Get / Patch Status / Get & Patch WhatsApp Questions)\n\n## Setup\n\n1. Import this file plus `kabil-backend.postman_environment.json`.\n2. Select the **Kabil.ai \u2014 Local Dev** environment in the top-right dropdown.\n3. Fill in `admin_email` + `admin_password` with the credentials produced by `make seed`.\n4. Run **Login (Success)** \u2014 the response's `access_token` is auto-saved to `{{access_token}}` and used by every authenticated request.\n5. Run **Me** to verify the token works.\n6. Under **Jobs**, run **Create Job** \u2014 `{{job_id}}` is captured and used by the subsequent Job requests.\n\n## Server\n\nThe API must be running locally (default port 8000). Start it with `make up` (Docker) or `make dev` (hot reload outside Docker).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status is ok\", () => pm.expect(pm.response.json().status).to.eql(\"ok\"));",
+                  "pm.test(\"version present\", () => pm.expect(pm.response.json().version).to.be.a(\"string\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Liveness probe. Returns `{\"status\":\"ok\",\"version\":\"<APP_VERSION>\"}`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (Success)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"access_token present\", () => pm.expect(data.access_token).to.be.a(\"string\"));",
+                  "pm.test(\"token_type bearer\", () => pm.expect(data.token_type).to.eql(\"bearer\"));",
+                  "pm.test(\"expires_at present\", () => pm.expect(data.expires_at).to.be.a(\"string\"));",
+                  "pm.environment.set(\"access_token\", data.access_token);",
+                  "pm.environment.set(\"token_expires_at\", data.expires_at);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Exchange email + password for a JWT bearer token. The test script saves the token to `{{access_token}}` and the expiry to `{{token_expires_at}}` for downstream requests."
+          }
+        },
+        {
+          "name": "Login (Wrong Password)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 Unauthorized\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error is invalid_credentials\", () => pm.expect(pm.response.json().error).to.eql(\"invalid_credentials\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"this-is-definitely-wrong\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Verifies that a wrong password returns 401 with the generic `invalid_credentials` error \u2014 i.e. the response cannot be used to enumerate valid emails."
+          }
+        },
+        {
+          "name": "Me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"has id / email / role\", () => {",
+                  "  pm.expect(data.id).to.be.a(\"string\");",
+                  "  pm.expect(data.email).to.be.a(\"string\");",
+                  "  pm.expect(data.role).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Returns the principal behind the current token: id, email, full_name, role, created_at, last_login_at."
+          }
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 No Content\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Revokes the current session row. The JWT itself is still valid by signature but `/auth/me` will return 401 because the session is gone."
+          }
+        },
+        {
+          "name": "Me (After Logout \u2014 expect 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 Unauthorized\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error is invalid_token\", () => pm.expect(pm.response.json().error).to.eql(\"invalid_token\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Run this immediately after Logout to confirm the revoked-session path: same JWT, but the server returns 401 + `invalid_token` because the row is gone."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"has the four summary blocks\", () => {",
+                  "  pm.expect(data.jobs.total).to.be.a(\"number\");",
+                  "  pm.expect(data.applications.total).to.be.a(\"number\");",
+                  "  pm.expect(data.candidates.total).to.be.a(\"number\");",
+                  "  pm.expect(data.talent_pool.active).to.be.a(\"number\");",
+                  "});",
+                  "pm.test(\"breakdown maps are zero-filled across every enum value\", () => {",
+                  "  pm.expect(data.jobs.by_status).to.have.all.keys(\"draft\",\"open\",\"closed\");",
+                  "  pm.expect(data.applications.by_stage).to.have.all.keys(",
+                  "    \"vector_screen\",\"hard_filter\",\"whatsapp\",\"interview\",\"done\");",
+                  "  pm.expect(data.applications.by_status).to.have.all.keys(\"active\",\"rejected\",\"accepted\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dashboard",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard"
+              ]
+            },
+            "description": "Workspace-wide aggregate counts for the HR home screen: jobs by status, applications by stage + status, candidate + active talent-pool totals. No params (single shared workspace). by_status / by_stage maps always carry every enum value, zero-filled."
+          }
+        },
+        {
+          "name": "Get Dashboard Summary (Missing Auth \u2014 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 Unauthorized\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dashboard",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard"
+              ]
+            },
+            "description": "No Authorization header \u2192 401."
+          }
+        },
+        {
+          "name": "Get Performance Table",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"rows carry health + counts\", () => {",
+                  "  pm.expect(data.rows).to.be.an(\"array\");",
+                  "  data.rows.forEach(r => {",
+                  "    pm.expect([\"healthy\",\"at_risk\",\"unhealthy\"]).to.include(r.health);",
+                  "    pm.expect(r.candidates).to.be.a(\"number\");",
+                  "    pm.expect(r.days_open).to.be.a(\"number\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dashboard/performance",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard",
+                "performance"
+              ]
+            },
+            "description": "Per-job Performance table: one row per non-draft job with candidates/shortlisted counts (non-archived), days_open, and a JobHealth verdict (shortlisted \u2192 at_risk \u2192 healthy). Sorted at-risk first, then days_open desc."
+          }
+        },
+        {
+          "name": "Get Candidate Pipeline (All Jobs)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"by_bucket carries every bucket, zero-filled\", () => {",
+                  "  pm.expect(data.by_bucket).to.have.all.keys(",
+                  "    \"sourcing\",\"screening\",\"interview\",\"final_shortlist\");",
+                  "});",
+                  "pm.test(\"conversion fields present\", () => {",
+                  "  pm.expect(data.applied).to.be.a(\"number\");",
+                  "  pm.expect(data.offers).to.be.a(\"number\");",
+                  "  pm.expect(data.conversion_rate).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dashboard/pipeline",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard",
+                "pipeline"
+              ],
+              "query": [
+                {
+                  "key": "job_id",
+                  "value": "{{job_id}}",
+                  "description": "Optional. Omit for the workspace-wide All-Jobs view; pass a job UUID to scope to one job.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Candidate Pipeline funnel. Active applications collapsed into the four PipelineBucket columns (sourcing = vector_screen+hard_filter, screening = whatsapp, interview, final_shortlist = done), always zero-filled. Plus Applied\u2192Offer conversion. Add ?job_id=<uuid> to scope to one job."
+          }
+        },
+        {
+          "name": "Get Upcoming Interviews",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"shape\", () => {",
+                  "  pm.expect(data.interviews).to.be.an(\"array\");",
+                  "  pm.expect(data.total).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dashboard/upcoming-interviews?limit=3",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard",
+                "upcoming-interviews"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "3",
+                  "description": "1..200, default 3 (the card preview). The \"show all\" view passes a larger limit."
+                }
+              ]
+            },
+            "description": "Nearest booked, future interviews (soonest first). total is the full count of future booked interviews so the FE knows whether \"show all\" has more than the returned page."
+          }
+        },
+        {
+          "name": "Get Pending Feedback",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"items carry days_waiting\", () => {",
+                  "  pm.expect(data.items).to.be.an(\"array\");",
+                  "  data.items.forEach(it => {",
+                  "    pm.expect(it.stage).to.eql(\"interview\");",
+                  "    pm.expect(it.days_waiting).to.be.a(\"number\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dashboard/pending-feedback",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard",
+                "pending-feedback"
+              ]
+            },
+            "description": "Applications stalled at the interview stage past the feedback SLA (active, stage==interview, last moved > INTERVIEW_PENDING_FEEDBACK_DAYS=3 days ago). Oldest first."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Jobs",
+      "description": "Job CRUD endpoints (Step 2.5). All routes require HR auth \u2014 run **Auth \u203a Login (Success)** first so `{{access_token}}` is populated.",
+      "item": [
+        {
+          "name": "Create Job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted\", () => pm.response.to.have.status(202));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"id present\", () => pm.expect(data.id).to.be.a(\"string\"));",
+                  "pm.environment.set(\"job_id\", data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Senior Backend Engineer\",\n  \"hiring_company\": \"Kabil Test Co\",\n  \"country\": \"AE\",\n  \"city\": \"Dubai\",\n  \"employment_type\": \"permanent\",\n  \"work_mode\": \"hybrid\",\n  \"currency\": \"AED\",\n  \"min_salary\": 20000,\n  \"max_salary\": 30000,\n  \"notice_period\": \"30d\",\n  \"min_experience_years\": 5,\n  \"required_skills\": [\"Python\", \"PostgreSQL\"],\n  \"preferred_skills\": [\"AWS\"],\n  \"visa_requirement\": \"sponsorship_offered\",\n  \"nationality_preference\": [],\n  \"languages_required\": [\"english\", \"arabic\"],\n  \"job_description\": \"Build the Kabil hiring backend. Strong async Python required.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/jobs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs"
+              ]
+            },
+            "description": "Creates a draft job. Returns 202 with `{id: UUID}`. Test script captures the id to `{{job_id}}`. Description is HTML-stripped server-side before persisting; country is upper-cased and validated against the ISO-3166 alpha-2 set; `min_salary <= max_salary` is enforced."
+          }
+        },
+        {
+          "name": "Create Job (Invalid Country \u2014 422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 Unprocessable\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error is validation_error\", () => pm.expect(pm.response.json().error).to.eql(\"validation_error\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bad Country\",\n  \"hiring_company\": \"Kabil Test Co\",\n  \"country\": \"ZZ\",\n  \"city\": \"Nowhere\",\n  \"employment_type\": \"permanent\",\n  \"work_mode\": \"remote\",\n  \"currency\": \"AED\",\n  \"min_experience_years\": 3,\n  \"job_description\": \"Sample.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/jobs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs"
+              ]
+            },
+            "description": "Confirms ISO-3166 country validation rejects bogus codes."
+          }
+        },
+        {
+          "name": "List Jobs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"items is array\", () => pm.expect(data.items).to.be.an(\"array\"));",
+                  "pm.test(\"pagination meta\", () => {",
+                  "  pm.expect(data.page).to.be.a(\"number\");",
+                  "  pm.expect(data.page_size).to.be.a(\"number\");",
+                  "  pm.expect(data.total).to.be.a(\"number\");",
+                  "});",
+                  "pm.test(\"each item carries the zero-filled stage funnel\", () => {",
+                  "  data.items.forEach((j) => pm.expect(j.applications_by_stage).to.have.all.keys(",
+                  "    \"vector_screen\",\"hard_filter\",\"whatsapp\",\"interview\",\"done\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs?page=1&page_size=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "draft",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "backend",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Paginated list. Enable the `status` and `search` query params to filter (case-insensitive substring match on `title`). Max `page_size` is 100; items ordered by `updated_at DESC`.\n\nEach item carries `applications_by_stage` — the per-job pipeline funnel counting that job's applications at each stage (`vector_screen` … `done`). Always fully populated (every stage key present, zero-filled); counts all applications regardless of status."
+          }
+        },
+        {
+          "name": "Get Job (Detail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"id matches captured job_id\", () => pm.expect(data.id).to.eql(pm.environment.get(\"job_id\")));",
+                  "pm.test(\"status is string\", () => pm.expect(data.status).to.be.a(\"string\"));",
+                  "pm.test(\"whatsapp_questions is array\", () => pm.expect(data.whatsapp_questions).to.be.an(\"array\"));",
+                  "pm.test(\"public_slug present\", () => pm.expect(data.public_slug).to.be.a(\"string\"));",
+                  "pm.environment.set(\"public_slug\", data.public_slug);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{job_id}}"
+              ]
+            },
+            "description": "Full detail (omits `jd_embedding` and `ai_verify_flags`). Response is cached in Redis for 60 s using a key versioned by `updated_at` \u2014 any write rotates the key naturally, so no explicit invalidation runs."
+          }
+        },
+        {
+          "name": "Patch Status (Open)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status is open\", () => pm.expect(pm.response.json().status).to.eql(\"open\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"open\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{job_id}}",
+                "status"
+              ]
+            },
+            "description": "Move job from draft \u2192 open. Step 2.6 will enqueue JD embedding + WhatsApp question generation on this transition; today the endpoint just flips status. Only `open` and `closed` are accepted as the target status."
+          }
+        },
+        {
+          "name": "Patch Status (Close)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"status is closed\", () => pm.expect(data.status).to.eql(\"closed\"));",
+                  "pm.test(\"closed_at populated\", () => pm.expect(data.closed_at).to.be.a(\"string\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"closed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{job_id}}",
+                "status"
+              ]
+            },
+            "description": "Move job from open \u2192 closed. Sets `closed_at` server-side. Run *after* Open."
+          }
+        },
+        {
+          "name": "Patch Status (Illegal Transition \u2014 409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 Conflict\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"error is illegal_status_transition\", () => pm.expect(pm.response.json().error).to.eql(\"illegal_status_transition\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"closed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{job_id}}",
+                "status"
+              ]
+            },
+            "description": "After running the Open + Close patches above, the job is in `closed`. Attempting `closed \u2192 closed` (or any non-allowed edge) returns 409. The allowed matrix is draft\u2192open, open\u2192closed, closed\u2192open."
+          }
+        },
+        {
+          "name": "Get WhatsApp Questions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"questions is array\", () => pm.expect(pm.response.json().questions).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}/whatsapp-questions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{job_id}}",
+                "whatsapp-questions"
+              ]
+            },
+            "description": "Returns the JSONB-stored screening question list. Empty until Step 2.6 populates it on first `draft\u2192open` transition, or HR sets it via the PATCH below."
+          }
+        },
+        {
+          "name": "Patch WhatsApp Questions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"questions persisted\", () => pm.expect(data.questions.length).to.be.greaterThan(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"questions\": [\n    {\n      \"id\": \"q_abcd1234\",\n      \"order\": 1,\n      \"category\": \"background_validation\",\n      \"subcategory\": \"Experience\",\n      \"question_en\": \"How many years of relevant experience do you have in this field?\",\n      \"question_ar\": \"\u0643\u0645 \u0639\u062f\u062f \u0633\u0646\u0648\u0627\u062a \u0627\u0644\u062e\u0628\u0631\u0629 \u0630\u0627\u062a \u0627\u0644\u0635\u0644\u0629 \u0644\u062f\u064a\u0643 \u0641\u064a \u0647\u0630\u0627 \u0627\u0644\u0645\u062c\u0627\u0644\u061f\",\n      \"reasoning\": \"Confirms the years of relevant experience claimed on the CV against the role's required skills.\",\n      \"is_ai_generated\": true,\n      \"source_field\": null,\n      \"ai_verifies_response\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}/whatsapp-questions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{job_id}}",
+                "whatsapp-questions"
+              ]
+            },
+            "description": "Full-replacement edit. Submit the entire ordered list; each item must satisfy the WhatsAppQuestion schema (id matches `^q_[A-Za-z0-9_-]{8}$`, order 1..15, both languages non-empty). Duplicate ids/orders are rejected at 422; >15 items also 422.\n\nThe generated list is the 6 fixed canonical questions + up to 3 AI `background_validation` questions; HR may append custom questions here. Each item carries `ai_verifies_response` (default `false`); only questions with `ai_verifies_response=true` (the AI `background_validation` questions) have the candidate's reply AI-scored. Fixed and custom answers are stored verbatim and never scored."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public",
+      "description": "Public-facing endpoints that candidates hit without authentication.\n\nThese routes are reached via per-job shareable slugs minted by HR (`PublicUploadToken.slug`); the slug acts as the only access control. Honeypot, slug-active, consent, and PDF-validation checks are enforced server-side.",
+      "item": [
+        {
+          "name": "Apply (Upload CV)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted\", () => pm.response.to.have.status(202));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"reference_number is 32-char hex\", () => {",
+                  "  pm.expect(data.reference_number).to.be.a(\"string\");",
+                  "  pm.expect(data.reference_number).to.have.lengthOf(32);",
+                  "});",
+                  "pm.environment.set(\"application_reference_number\", data.reference_number);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "email",
+                  "value": "candidate@example.com",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "+971501234567",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "Sample Candidate",
+                  "type": "text"
+                },
+                {
+                  "key": "consent",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "honeypot",
+                  "value": "",
+                  "type": "text",
+                  "description": "Bot-trap field. Leave empty in the real client. Any non-empty value short-circuits to a fake 202 with no DB writes."
+                },
+                {
+                  "key": "pdf",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick any PDF. Magic-byte and size validation are server-side; max size lives in settings.cv_max_file_size_mb."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/public/apply/{{public_slug}}/upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "apply",
+                "{{public_slug}}",
+                "upload"
+              ]
+            },
+            "description": "Submit a CV against a public job slug. Returns 202 with `{reference_number: <UUID hex>}` and enqueues the Step 3.9 CV processing chain (extract \u2192 parse \u2192 authenticity \u2192 embed \u2192 similarity \u2192 auto_reject).\n\n**Idempotency:**\n- Same candidate (email + phone) applying twice to the same job returns the *same* reference number (unique on `(candidate_id, job_id)`).\n- Same PDF bytes re-uploaded for the same candidate reuse the existing `cv_documents` row (sha256-keyed dedup).\n- New PDF bytes for an existing candidate insert a fresh `cv_documents` row and rotate the `is_current` flag.\n\n**Test script** captures `reference_number` into `{{application_reference_number}}`."
+          }
+        },
+        {
+          "name": "Apply (Inactive / Unknown Slug \u2014 410)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"410 Gone\", () => pm.response.to.have.status(410));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"slug_inactive_or_unknown error code\", () => {",
+                  "  pm.expect(data.error || data.detail).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "email",
+                  "value": "candidate@example.com",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "+971501234567",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "Sample Candidate",
+                  "type": "text"
+                },
+                {
+                  "key": "consent",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "honeypot",
+                  "value": "",
+                  "type": "text"
+                },
+                {
+                  "key": "pdf",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick any PDF. Magic-byte and size validation are server-side; max size lives in settings.cv_max_file_size_mb."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/public/apply/bogus-slug-that-does-not-exist/upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "apply",
+                "bogus-slug-that-does-not-exist",
+                "upload"
+              ]
+            },
+            "description": "Unknown or inactive slugs return the *same* 410 Gone shape (no info leak \u2014 HR closing a job is indistinguishable from a slug that never existed). Cached for 5 minutes in Redis via miss-sentinel so a flood of bogus slugs doesn't hammer the DB."
+          }
+        },
+        {
+          "name": "Apply (Missing Consent \u2014 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "email",
+                  "value": "candidate@example.com",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "+971501234567",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "Sample Candidate",
+                  "type": "text"
+                },
+                {
+                  "key": "consent",
+                  "value": "false",
+                  "type": "text",
+                  "description": "Must be 'true' for a real apply."
+                },
+                {
+                  "key": "honeypot",
+                  "value": "",
+                  "type": "text"
+                },
+                {
+                  "key": "pdf",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick any PDF. Magic-byte and size validation are server-side; max size lives in settings.cv_max_file_size_mb."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/public/apply/{{public_slug}}/upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "apply",
+                "{{public_slug}}",
+                "upload"
+              ]
+            },
+            "description": "Consent must be the literal string 'true'. Anything else (including 'false', empty, or omitted) returns 400 with `consent_required`. No DB writes happen before this check."
+          }
+        },
+        {
+          "name": "Apply (Honeypot Filled \u2014 fake 202, no DB writes)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted (fake)\", () => pm.response.to.have.status(202));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"reference_number present but no DB writes\", () => {",
+                  "  pm.expect(data.reference_number).to.be.a(\"string\");",
+                  "  pm.expect(data.reference_number).to.have.lengthOf.at.most(32);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "email",
+                  "value": "bot@example.com",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "+971501234567",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "Bot",
+                  "type": "text"
+                },
+                {
+                  "key": "consent",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "honeypot",
+                  "value": "filled-by-bot",
+                  "type": "text",
+                  "description": "Any non-empty value triggers the honeypot path."
+                },
+                {
+                  "key": "pdf",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick any PDF. Magic-byte and size validation are server-side; max size lives in settings.cv_max_file_size_mb."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/public/apply/{{public_slug}}/upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "apply",
+                "{{public_slug}}",
+                "upload"
+              ]
+            },
+            "description": "When the hidden `honeypot` field is non-empty, the server returns a real-looking 202 with a random reference number and *no DB writes* or Celery enqueue. Indistinguishable from the success path on the wire \u2014 denies a bot any signal that its submission was rejected."
+          }
+        },
+        {
+          "name": "Apply (Invalid Email \u2014 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "email",
+                  "value": "not-an-email",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "+971501234567",
+                  "type": "text"
+                },
+                {
+                  "key": "full_name",
+                  "value": "Sample Candidate",
+                  "type": "text"
+                },
+                {
+                  "key": "consent",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "honeypot",
+                  "value": "",
+                  "type": "text"
+                },
+                {
+                  "key": "pdf",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick any PDF. Magic-byte and size validation are server-side; max size lives in settings.cv_max_file_size_mb."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/public/apply/{{public_slug}}/upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "apply",
+                "{{public_slug}}",
+                "upload"
+              ]
+            },
+            "description": "Basic regex validation. Strings without an `@`, without a TLD, or longer than 254 chars are rejected with 400 `invalid_email` before any DB writes."
+          }
+        },
+        {
+          "name": "Apply (Invalid Phone \u2014 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "email",
+                  "value": "candidate@example.com",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "12345",
+                  "type": "text",
+                  "description": "Too short to be a real phone number."
+                },
+                {
+                  "key": "full_name",
+                  "value": "Sample Candidate",
+                  "type": "text"
+                },
+                {
+                  "key": "consent",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "honeypot",
+                  "value": "",
+                  "type": "text"
+                },
+                {
+                  "key": "pdf",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick any PDF. Magic-byte and size validation are server-side; max size lives in settings.cv_max_file_size_mb."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/public/apply/{{public_slug}}/upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "public",
+                "apply",
+                "{{public_slug}}",
+                "upload"
+              ]
+            },
+            "description": "Phone is normalized to E.164 via Google's libphonenumber. Invalid / unparseable numbers return 400 before any DB writes."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Applications",
+      "description": "Step 4.1 HR endpoints over the `applications` table.\n\n- `GET /jobs/{job_id}/applications` \u2014 paginated list with stage/status filters and ordering. Cached in Redis for 15 s per (job_id, filter set, page).\n- `GET /applications/{id}` \u2014 full detail with nested candidate, current CV, and chronological score history.\n- `GET /applications/{id}/audit-log` \u2014 newest-first audit entries (Step 4.2 wires the first writes).\n\nAll endpoints require HR auth (`Authorization: Bearer {{access_token}}`).",
+      "item": [
+        {
+          "name": "List Applications (for Job)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"items is array\", () => pm.expect(data.items).to.be.an(\"array\"));",
+                  "pm.test(\"total is number\", () => pm.expect(data.total).to.be.a(\"number\"));",
+                  "if (data.items.length > 0) {",
+                  "  pm.environment.set(\"application_id\", data.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}/applications?page=1&page_size=20&order=-created_at",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{job_id}}",
+                "applications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "20"
+                },
+                {
+                  "key": "order",
+                  "value": "-created_at",
+                  "description": "One of: -created_at, created_at, -similarity_score, similarity_score, -hard_filter_score, hard_filter_score, -stage_updated_at"
+                },
+                {
+                  "key": "stage",
+                  "value": "vector_screen",
+                  "disabled": true,
+                  "description": "Optional. Filters by ApplicationStage value."
+                },
+                {
+                  "key": "status",
+                  "value": "active",
+                  "disabled": true,
+                  "description": "Optional. One of: active, rejected."
+                }
+              ]
+            },
+            "description": "Paginated list of applications submitted to the given job. Cached for 15 s per (job_id, stage, status, order, page, page_size). 404 if the job id is unknown.\n\n**Test script** captures the first item's id into `{{application_id}}` so the Detail / Audit-Log requests can run without manual copy/paste."
+          }
+        },
+        {
+          "name": "List Applications (Filter by Status \u2014 Rejected)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"all items rejected\", () => {",
+                  "  data.items.forEach(it => pm.expect(it.status).to.eql(\"rejected\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}/applications?status=rejected",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{job_id}}",
+                "applications"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "rejected"
+                }
+              ]
+            },
+            "description": "Exercises the `status` filter. Useful after Step 3.9 auto-rejection has flipped low-similarity rows to `rejected` (stage stays `vector_screen` so HR can see why they were dropped)."
+          }
+        },
+        {
+          "name": "List Applications (Order by Similarity DESC)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"items sorted similarity desc with nulls last\", () => {",
+                  "  const scores = data.items.map(it => it.similarity_score);",
+                  "  for (let i = 1; i < scores.length; i++) {",
+                  "    if (scores[i - 1] === null) { pm.expect(scores[i]).to.eql(null); continue; }",
+                  "    if (scores[i] === null) continue;",
+                  "    pm.expect(scores[i - 1]).to.be.at.least(scores[i]);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}/applications?order=-similarity_score",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{job_id}}",
+                "applications"
+              ],
+              "query": [
+                {
+                  "key": "order",
+                  "value": "-similarity_score"
+                }
+              ]
+            },
+            "description": "Best matches first; NULLs (rows not yet through Step 3.9's similarity step) land last so the top of the page is always meaningful."
+          }
+        },
+        {
+          "name": "Get Application (Detail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"id matches captured application_id\", () => pm.expect(data.id).to.eql(pm.environment.get(\"application_id\")));",
+                  "pm.test(\"candidate nested\", () => pm.expect(data.candidate).to.be.an(\"object\"));",
+                  "pm.test(\"cv_document nested\", () => pm.expect(data.cv_document).to.be.an(\"object\"));",
+                  "pm.test(\"scores is array\", () => pm.expect(data.scores).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "applications",
+                "{{application_id}}"
+              ]
+            },
+            "description": "Full nested detail: application row + candidate snapshot + current CV reference + chronological `application_scores` history (newest first). 404 if the application id is unknown.\n\n`whatsapp_sessions` and `interview_slots` will be added when Phase 5 / 6 introduces those tables."
+          }
+        },
+        {
+          "name": "Get Application Audit Log",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"items is array\", () => pm.expect(data.items).to.be.an(\"array\"));",
+                  "pm.test(\"total matches items length\", () => pm.expect(data.total).to.eql(data.items.length));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}/audit-log",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "applications",
+                "{{application_id}}",
+                "audit-log"
+              ]
+            },
+            "description": "Chronological (newest first) audit log for one application. Empty until Step 4.2 starts writing on stage/status transitions. 404 if the application id is unknown."
+          }
+        },
+        {
+          "name": "Get WhatsApp Conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"state present\", () => pm.expect(data.state).to.be.a(\"string\"));",
+                  "pm.test(\"messages is array\", () => pm.expect(data.messages).to.be.an(\"array\"));",
+                  "pm.test(\"answers is array\", () => pm.expect(data.answers).to.be.an(\"array\"));",
+                  "// Inbound free-text answers carry per-answer scores (0-10).",
+                  "const scored = data.messages.filter(m => m.answer_relevance_score !== null && m.answer_relevance_score !== undefined);",
+                  "pm.test(\"scored answers expose relevance + ai fields\", () => {",
+                  "  scored.forEach(m => {",
+                  "    pm.expect(m.answer_relevance_score).to.be.within(0, 10);",
+                  "    pm.expect(m.answer_ai_score).to.be.within(0, 10);",
+                  "    pm.expect(m.answer_score_rationale).to.be.a(\"string\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}/whatsapp",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "applications",
+                "{{application_id}}",
+                "whatsapp"
+              ]
+            },
+            "description": "HR-facing screening transcript for one application: the conversation state-machine cursor (`state`, `current_question_index`), the structured `answers[]` copy, and the full ordered `messages[]` transcript HR renders as the chat.\n\nEach inbound free-text answer message carries per-answer scoring (Claude Haiku, Step 5.4) so HR can triage replies at a glance:\n- `answer_relevance_score` (0-10) \u2014 how directly the answer addresses the question (10 = fully on-topic).\n- `answer_ai_score` (0-10) \u2014 how AI-generated the answer reads (10 = almost certainly AI-written; **higher is the worse signal**).\n- `answer_score_rationale` \u2014 one short HR-facing note explaining both scores.\n\nThese three fields are `null` on every non-answer row (greeting, questions, button taps, closing) and `null` on an answer if scoring failed (best-effort \u2014 a scoring miss never blocks screening). The same scores also appear inside each `answers[]` entry (`relevance_score` / `ai_likelihood_score` / `rationale`).\n\nReturns 404 (`error=whatsapp_conversation_not_found`) until HR moves the application into the `whatsapp` stage and the invite runs."
+          }
+        },
+        {
+          "name": "Get Application (Unknown \u2014 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 Not Found\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"error is application_not_found\", () => pm.expect(pm.response.json().error).to.eql(\"application_not_found\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/applications/00000000-0000-0000-0000-000000000000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "applications",
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "description": "Asserts the global exception handler maps `ApplicationNotFoundError` \u2192 HTTP 404 with `error=application_not_found`."
+          }
+        },
+        {
+          "name": "Patch Stage (Vector Screen \u2192 Hard Filter)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"stage advanced\", () => pm.expect(data.stage).to.eql(\"hard_filter\"));",
+                  "pm.test(\"status still active\", () => pm.expect(data.status).to.eql(\"active\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"stage\": \"hard_filter\",\n  \"reason\": \"Top similarity, advancing to scoring\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}/stage",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "applications",
+                "{{application_id}}",
+                "stage"
+              ]
+            },
+            "description": "Move the application through the pipeline. Allowed transitions:\n- `vector_screen \u2192 hard_filter`\n- `hard_filter \u2192 whatsapp`\n- `whatsapp \u2192 interview`\n- `interview \u2192 done`\n\nMoving to `hard_filter` enqueues the Step 4.3 scoring task (currently stubbed: marks `pipeline_status.hard_filter = 'pending'`). The audit log records before / after state with HR identity and the optional `reason`. The list cache for the parent job is invalidated.\n\nStage moves require `status=active`; rejected/accepted applications return 422.\n\nInvalid transitions return 422 with `error=illegal_stage_transition`."
+          }
+        },
+        {
+          "name": "Patch Stage (Illegal Skip \u2014 422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 Unprocessable Entity\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error is illegal_stage_transition\", () => pm.expect(pm.response.json().error).to.eql(\"illegal_stage_transition\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"stage\": \"whatsapp\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}/stage",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "applications",
+                "{{application_id}}",
+                "stage"
+              ]
+            },
+            "description": "Skipping `hard_filter` directly to `whatsapp` is not in the allow-list and returns 422."
+          }
+        },
+        {
+          "name": "Patch Status (Reject)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"status is rejected\", () => pm.expect(data.status).to.eql(\"rejected\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"rejected\",\n  \"reason\": \"Not a fit for the role\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "applications",
+                "{{application_id}}",
+                "status"
+              ]
+            },
+            "description": "Flip the application's `status`. Allowed:\n- `active \u2192 rejected`\n- `active \u2192 accepted`\n- `rejected \u2192 active` (HR override, stage preserved)\n\n`accepted` is terminal \u2014 further status changes return 422.\n\nThe audit log records `manually_rejected` / `manually_accepted` / `status_changed` (override path) with the optional `reason`. Stage is intentionally not modified."
+          }
+        },
+        {
+          "name": "Patch Status (Override Rejected \u2192 Active)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"status restored to active\", () => pm.expect(data.status).to.eql(\"active\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\",\n  \"reason\": \"Reconsidered after talent pool review\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "applications",
+                "{{application_id}}",
+                "status"
+              ]
+            },
+            "description": "HR override: bring a rejected candidate back into the pipeline at the stage they were rejected from."
+          }
+        },
+        {
+          "name": "Patch Status (Accepted \u2192 anything \u2014 422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 Unprocessable Entity\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error is illegal_application_status_transition\", () => pm.expect(pm.response.json().error).to.eql(\"illegal_application_status_transition\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "applications",
+                "{{application_id}}",
+                "status"
+              ]
+            },
+            "description": "Once an application is `accepted` it is terminal; any further status change returns 422. Run `Patch Status (Reject)` first if the captured application is still active."
+          }
+        },
+        {
+          "name": "Rescore (Hard Filter)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted\", () => pm.response.to.have.status(202));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"type is hard_filter\", () => pm.expect(data.type).to.eql(\"hard_filter\"));",
+                  "pm.test(\"enqueued true\", () => pm.expect(data.enqueued).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}/rescore?type=hard_filter",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "applications",
+                "{{application_id}}",
+                "rescore"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "hard_filter",
+                  "description": "One of: hard_filter, similarity"
+                }
+              ]
+            },
+            "description": "HR-triggered manual rescore. Writes a `rescore_requested` audit-log row, then dispatches the Step 4.3 scoring task with `force=True`:\n\n- skips the idempotent-skip on the existing `hard_filter_score`,\n- nulls the existing score + breakdown so the detail endpoint shows 'in progress' until the new run lands,\n- bypasses the Claude Redis cache (`use_cache=False`) so HR genuinely gets a fresh Sonnet response, not a cached one.\n\nThe `application_scores` audit table retains the prior attempt; a new row is appended for the rescore. Returns 202 immediately; the new value becomes visible on the detail endpoint after the worker finishes."
+          }
+        },
+        {
+          "name": "Rescore (Similarity)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted\", () => pm.response.to.have.status(202));",
+                  "pm.test(\"type is similarity\", () => pm.expect(pm.response.json().type).to.eql(\"similarity\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}/rescore?type=similarity",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "applications",
+                "{{application_id}}",
+                "rescore"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "similarity"
+                }
+              ]
+            },
+            "description": "Re-runs cosine similarity scoring. Since the underlying CV/JD embeddings are deterministic, the cache bypass is a no-op for similarity -- `force=True` here just means 'recompute against the latest embeddings'. Useful after a CV re-upload or a JD edit (the latter would also re-embed the JD)."
+          }
+        },
+        {
+          "name": "Rescore (Invalid Type \u2014 422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 Unprocessable Entity\", () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}/rescore?type=not_a_real_type",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "applications",
+                "{{application_id}}",
+                "rescore"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "not_a_real_type"
+                }
+              ]
+            },
+            "description": "Pydantic enum validation rejects unknown rescore types before the route body runs."
+          }
+        },
+        {
+          "name": "Bulk Upload CVs (HR \u2014 up to 50 PDFs)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted\", () => pm.response.to.have.status(202));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"batch_id is a UUID string\", () => pm.expect(data.batch_id).to.be.a(\"string\"));",
+                  "pm.test(\"accepted_count is a number\", () => pm.expect(data.accepted_count).to.be.a(\"number\"));",
+                  "pm.test(\"rejected_count is a number\", () => pm.expect(data.rejected_count).to.be.a(\"number\"));",
+                  "pm.test(\"applications is array\", () => pm.expect(data.applications).to.be.an(\"array\"));",
+                  "pm.test(\"already_applied is array\", () => pm.expect(data.already_applied).to.be.an(\"array\"));",
+                  "pm.test(\"rejected is array\", () => pm.expect(data.rejected).to.be.an(\"array\"));",
+                  "pm.environment.set(\"bulk_batch_id\", data.batch_id);",
+                  "if (data.applications.length > 0) {",
+                  "  pm.environment.set(\"application_id\", data.applications[0].application_id);",
+                  "  pm.environment.set(\"candidate_id\", data.applications[0].candidate_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick one PDF. The endpoint accepts up to 50 \u2014 duplicate this row in Postman (use the \u22ee menu \u2192 'Add row' and key it 'files') to attach more in one request. Each file is independently validated; bad ones come back in `rejected` with a reason."
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "Second file slot \u2014 leave blank if you only want to test one."
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "Third file slot \u2014 leave blank if you only want to test one or two."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}/applications/bulk-upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{job_id}}",
+                "applications",
+                "bulk-upload"
+              ]
+            },
+            "description": "HR-only endpoint for uploading a batch of CVs against one job. Up to 50 PDFs per request, 10 MB each.\n\n**Per-file processing (synchronous inside the request):**\n1. PDF magic-byte + size check.\n2. Batch-level sha256 dedup (second occurrence rejected as `duplicate_in_batch`).\n3. Upload to Azure Blob (idempotent by sha256).\n4. pypdf text extraction (Redis-cached).\n5. Claude Haiku contact extraction (Redis-cached) for name + email + phone.\n6. Phone normalised to E.164.\n7. Find-or-create candidate on `(LOWER(email), phone_e164)`.\n8. If the candidate already applied to this job \u2192 response lands the file in `already_applied`, no new application created.\n9. Otherwise create the `cv_document` + `application` and enqueue the Step 3.9 CV pipeline.\n\n**Rejection reasons:**\n- `not_pdf` \u2014 magic-byte mismatch\n- `too_large` \u2014 exceeds `cv_max_file_size_mb`\n- `duplicate_in_batch` \u2014 same sha256 as an earlier file in *this* request\n- `parse_failed_no_contact` \u2014 Claude couldn't surface enough to create a Candidate (name OR email OR phone missing/unnormalisable)\n\n**Concurrency:** blob upload + text extraction + Claude calls fan out under `asyncio.Semaphore(10)`.\n\n**Audit log:** one row per newly-created application plus one batch-summary row keyed on the job; both share `after_state.batch_id`.\n\n**Test script** captures `batch_id` and the first created application's id/candidate_id into the environment for follow-up requests."
+          }
+        },
+        {
+          "name": "Bulk Upload (Closed Job \u2014 422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 Unprocessable Entity\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error code is job_not_open_for_applications\", () => {",
+                  "  pm.expect(pm.response.json().error).to.eql(\"job_not_open_for_applications\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "Any PDF \u2014 the request never gets past the job-status check."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/jobs/{{closed_job_id}}/applications/bulk-upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{closed_job_id}}",
+                "applications",
+                "bulk-upload"
+              ]
+            },
+            "description": "Bulk upload is refused unless the target job is `status='open'`. Draft and closed jobs both yield 422 with `error=job_not_open_for_applications`. Point `{{closed_job_id}}` at a job whose status is `closed` or `draft` to exercise this branch \u2014 the easiest setup is to run the **Patch Status (Close)** request first and reuse its `{{job_id}}`."
+          }
+        },
+        {
+          "name": "Bulk Upload (Missing Auth \u2014 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 Unauthorized\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "Any PDF \u2014 auth dependency fires before the body is read."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}/applications/bulk-upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "jobs",
+                "{{job_id}}",
+                "applications",
+                "bulk-upload"
+              ]
+            },
+            "description": "No `Authorization` header \u2192 401. Same behaviour as every other HR-gated route."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Talent Pool",
+      "description": "Phase 7 talent-pool surface. HR keeps strong candidates in a pool and later sources them onto jobs.\n\n- **Add to Pool** \u2014 pool an existing candidate (needs `{{candidate_id}}`).\n- **Upload CV to Pool** \u2014 drop a PDF straight into the pool; identity is parsed from the CV, candidate created, and the parse/authenticity/embed pipeline runs so they're searchable. Sets `{{candidate_id}}` + `{{talent_pool_entry_id}}`.\n- **Search Pool** \u2014 semantic search over pooled candidates' CVs (ranked by cosine similarity, highest first). Needs an embedded CV \u2014 run Upload first and give the worker a moment.\n- **List Pool** \u2014 paginated listing.\n- **Source to Job** \u2014 create a fresh application (L1, full scoring) for a pooled candidate against `{{job_id}}`; sets `{{application_id}}`.\n- **Candidate History** \u2014 the candidate's full cross-job journey: one scored stint per application they ever had (live or archived), each with its scores + WhatsApp screening digest. Needs `{{candidate_id}}`.",
+      "item": [
+        {
+          "name": "Add to Pool",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"entry id present\", () => pm.expect(data.id).to.be.a(\"string\"));",
+                  "pm.test(\"candidate nested\", () => pm.expect(data.candidate.id).to.be.a(\"string\"));",
+                  "pm.environment.set(\"talent_pool_entry_id\", data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidate_id\": \"{{candidate_id}}\",\n  \"source_job_id\": \"{{job_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/talent-pool/entries",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "talent-pool",
+                "entries"
+              ]
+            },
+            "description": "Add an existing candidate to the pool (idempotent on the candidate). `source_job_id` is optional \u2014 where they came from. Returns 201 with the entry + candidate snapshot."
+          }
+        },
+        {
+          "name": "Upload CV to Pool",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"entry present\", () => pm.expect(data.entry.id).to.be.a(\"string\"));",
+                  "pm.test(\"candidate present\", () => pm.expect(data.entry.candidate.id).to.be.a(\"string\"));",
+                  "pm.test(\"enqueued is boolean\", () => pm.expect(data.enqueued).to.be.a(\"boolean\"));",
+                  "pm.environment.set(\"talent_pool_entry_id\", data.entry.id);",
+                  "pm.environment.set(\"candidate_id\", data.entry.candidate.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick one CV PDF. Identity (name/email/phone) is parsed from the file; a CV with no usable contact is rejected 422. After the response, the worker parses + embeds the CV so it shows up in Search Pool."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/talent-pool/upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "talent-pool",
+                "upload"
+              ]
+            },
+            "description": "Upload a CV directly into the talent pool \u2014 no job, no application. Returns 201 with the pool entry, candidate, and `enqueued` (whether the embed pipeline was dispatched)."
+          }
+        },
+        {
+          "name": "Search Pool (Semantic)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"query echoed\", () => pm.expect(data.query).to.be.a(\"string\"));",
+                  "pm.test(\"items is array\", () => pm.expect(data.items).to.be.an(\"array\"));",
+                  "pm.test(\"ranked desc by similarity\", () => {",
+                  "  for (let i = 1; i < data.items.length; i++) {",
+                  "    pm.expect(data.items[i-1].similarity_score).to.be.at.least(data.items[i].similarity_score);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/talent-pool/search?q=senior python backend engineer&limit=10&active_only=true",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "talent-pool",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "senior python backend engineer"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "active_only",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Semantic search over the pool. `q` is embedded and pooled candidates are ranked by cosine similarity of their current CV (0-100 `similarity_score`, highest first). Candidates without an embedded CV are excluded."
+          }
+        },
+        {
+          "name": "List Pool",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"items is array\", () => pm.expect(data.items).to.be.an(\"array\"));",
+                  "pm.test(\"total is number\", () => pm.expect(data.total).to.be.a(\"number\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/talent-pool?active_only=true&page=1&page_size=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "talent-pool"
+              ],
+              "query": [
+                {
+                  "key": "active_only",
+                  "value": "true"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List pool entries, newest first, with candidate snapshots."
+          }
+        },
+        {
+          "name": "Source to Job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted\", () => pm.response.to.have.status(202));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"application_id present\", () => pm.expect(data.application_id).to.be.a(\"string\"));",
+                  "pm.test(\"sourced flag true\", () => pm.expect(data.sourced_from_talent_pool).to.be.true);",
+                  "pm.environment.set(\"application_id\", data.application_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidate_id\": \"{{candidate_id}}\",\n  \"job_id\": \"{{job_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/talent-pool/source",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "talent-pool",
+                "source"
+              ]
+            },
+            "description": "Source a pooled candidate onto `{{job_id}}`. Creates a fresh application at vector_screen flagged `sourced_from_talent_pool` and runs the full CV scoring pipeline. Idempotent on (candidate, job) \u2192 `already_existed=true`."
+          }
+        },
+        {
+          "name": "Candidate History",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test(\"stints is an array\", () => pm.expect(data.stints).to.be.an(\"array\"));",
+                  "pm.test(\"total_stints is a number\", () => pm.expect(data.total_stints).to.be.a(\"number\"));",
+                  "pm.test(\"in_pool is a boolean\", () => pm.expect(data.in_pool).to.be.a(\"boolean\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/talent-pool/candidates/{{candidate_id}}/history",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "talent-pool",
+                "candidates",
+                "{{candidate_id}}",
+                "history"
+              ]
+            },
+            "description": "The candidate's entire cross-job journey: one stint per application they ever had \u2014 live, rejected, accepted, or archived (moved back to the pool) \u2014 each with the scores + WhatsApp screening digest computed against that job. Candidate-level authenticity is surfaced once on the `candidate` snapshot. This is what powers \"see the candidate's full history, scored against every job they were part of\" from the pool. `404` if the candidate is unknown."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ]
+}

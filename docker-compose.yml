@@ -1,0 +1,99 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: kabil-postgres
+    environment:
+      POSTGRES_USER: kabil
+      POSTGRES_PASSWORD: kabil
+      POSTGRES_DB: kabil
+    ports:
+      # Host port 5433 → container 5432. 5433 is used because the user has
+      # a host Postgres already listening on 5432; this keeps both reachable.
+      - "5433:5432"
+    volumes:
+      - kabil_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kabil -d kabil"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: kabil-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kabil-api
+    # ``env_file`` is loaded first; the ``environment:`` overrides below
+    # win for any key set in both — that's how AI/Azure keys come from .env
+    # while host-vs-container DSNs are forced to the in-network hostnames.
+    env_file: .env
+    environment:
+      APP_ENV: development
+      APP_PORT: 8000
+      APP_SECRET_KEY: dev-secret-do-not-use-in-prod-32-bytes-min
+      APP_PUBLIC_URL: http://localhost:8000
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001
+      DATABASE_URL: postgresql+asyncpg://kabil:kabil@postgres:5432/kabil
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/3
+      CELERY_RESULT_BACKEND: redis://redis:6379/4
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    # Same image as the api — different command. The image embeds the full
+    # ``src`` tree so ``src.workers.celery_app`` is importable here too.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kabil-worker
+    command:
+      [
+        "celery",
+        "-A",
+        "src.workers.celery_app",
+        "worker",
+        "--loglevel=info",
+        "-Q",
+        "fast,slow",
+      ]
+    env_file: .env
+    environment:
+      APP_ENV: development
+      APP_SECRET_KEY: dev-secret-do-not-use-in-prod-32-bytes-min
+      DATABASE_URL: postgresql+asyncpg://kabil:kabil@postgres:5432/kabil
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/3
+      CELERY_RESULT_BACKEND: redis://redis:6379/4
+      # Belt-and-braces: ensure eager mode is off in the container even if
+      # .env locally has CELERY_TASK_ALWAYS_EAGER=true (only useful for tests).
+      CELERY_TASK_ALWAYS_EAGER: "false"
+      # See src/db/session.py: NullPool dodges the cross-loop asyncpg
+      # bug that fires when ``asyncio.run`` is invoked once per task.
+      # Name deliberately avoids the ``CELERY_`` prefix (would clash with
+      # Celery's own ``-P/--pool`` setting).
+      DB_USE_NULL_POOL: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  kabil_pgdata:

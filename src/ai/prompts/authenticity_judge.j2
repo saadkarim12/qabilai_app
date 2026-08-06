@@ -1,0 +1,25 @@
+Assess this CV for authenticity across the signals in the system instructions.
+{% if language_hint %}
+{{ language_hint }}
+{% endif %}
+{% if job_title %}
+━━━ JOB CONTEXT (for JD Keyword Mirroring calibration only) ━━━
+Role:            {{ job_title }}
+Required Skills: {{ required_skills }}
+
+Use this only to judge whether the CV's language is generic for this role
+TYPE — not whether it matches this specific posting.
+{% endif %}
+PARSED CV (structured summary)
+==============================
+{{ parsed_cv_json }}
+
+CV TEXT
+=======
+{{ cv_text }}
+
+TASK
+====
+For each signal: find specific CV evidence FIRST, then assign a 0-100 score
+(100 = authentic / no concern, 0 = strong fabrication concern). Then write
+the one-paragraph rationale. Output JSON only — no prose, no markdown fences.

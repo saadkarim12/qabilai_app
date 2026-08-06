@@ -1,0 +1,21 @@
+# Caddy reverse proxy + automatic HTTPS for the backend.
+#
+# The hostname is derived from the Hetzner server's public IP via sslip.io
+# (api.<ip-with-dashes>.sslip.io -> that IP), so we get a real, browser-trusted
+# Let's Encrypt certificate with no domain purchase. When you later move to a
+# real domain, change ONLY this hostname (and the FE's NEXT_PUBLIC_KABIL_API +
+# CORS_ORIGINS + webhook URLs). See DEPLOYMENT.md.
+api.167-233-172-142.sslip.io {
+	# flush_interval -1 disables response buffering so Server-Sent Events
+	# (/events/stream) stream to the browser in real time instead of being
+	# held back by the proxy.
+	reverse_proxy api:8000 {
+		flush_interval -1
+	}
+}
+
+# Frontend (Next.js), running as the `fe` container on the shared
+# kabil_default network (see the kabil-frontend repo).
+app.167-233-172-142.sslip.io {
+	reverse_proxy fe:3000
+}

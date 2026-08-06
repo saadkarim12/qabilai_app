@@ -1,0 +1,121 @@
+# Production stack for the single Hetzner VM (build-on-VM deploy).
+#
+# The deploy script (scripts/deploy-hetzner.sh) rsyncs this repo to the server
+# and runs, from the repo dir on the server:
+#
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#
+# `--env-file .env.production` feeds ${VAR} interpolation below (e.g. the DB
+# password); `env_file: .env.production` injects the app's runtime settings into
+# the api/worker containers. Secrets live ONLY in .env.production, which is
+# gitignored and created directly on the server — never committed. See
+# DEPLOYMENT.md.
+name: kabil
+
+services:
+  # Public edge: terminates TLS (auto Let's Encrypt via sslip.io) and reverse-
+  # proxies to the api. The ONLY service that publishes ports to the host.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+  # FastAPI (uvicorn). Entrypoint runs `alembic upgrade head` before serving
+  # (SERVICE_ROLE=api). Not published to the host — Caddy reaches it in-network.
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kabil-backend:latest
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      SERVICE_ROLE: api
+      APP_ENV: production
+      APP_PORT: "8000"
+      PORT: "8000"
+      # DSN is assembled here so the DB password lives in exactly one place
+      # (.env.production -> POSTGRES_PASSWORD). ssl=disable is REQUIRED: the
+      # pgvector image has no TLS, and app_env=production would otherwise force
+      # asyncpg ssl=True (src/db/session.py).
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-kabil}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kabil}?ssl=disable"
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Celery worker (fast,slow queues). Same image, role switched by SERVICE_ROLE.
+  # DB_USE_NULL_POOL=true: each task bridges sync->async via asyncio.run (fresh
+  # event loop per task); a pooled asyncpg conn is invalid across loops.
+  worker:
+    image: kabil-backend:latest
+    pull_policy: never
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      SERVICE_ROLE: worker
+      APP_ENV: production
+      DB_USE_NULL_POOL: "true"
+      CELERY_TASK_ALWAYS_EAGER: "false"
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-kabil}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kabil}?ssl=disable"
+    # Override the image's HTTP HEALTHCHECK (which targets the api's /health and
+    # can never pass here) with a Celery liveness ping.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A src.workers.celery_app inspect ping >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      api:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # pgvector 16. Internal only — never published to the host.
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kabil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-kabil}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kabil} -d ${POSTGRES_DB:-kabil}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Redis: app cache (db 0) + Celery broker (db 3) / results (db 4). Internal
+  # only. Volume persists the broker across restarts.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:
+  caddy_data:
+  caddy_config:

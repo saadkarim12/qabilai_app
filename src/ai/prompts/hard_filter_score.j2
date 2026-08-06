@@ -1,0 +1,34 @@
+JOB
+===
+title: {{ title }}
+hiring_company: {{ hiring_company }}
+country: {{ country }}
+city: {{ city }}
+employment_type: {{ employment_type }}
+work_mode: {{ work_mode }}
+min_experience_years: {{ min_experience_years }}
+required_skills: {{ required_skills }}
+preferred_skills: {{ preferred_skills }}
+visa_requirement: {{ visa_requirement }}
+nationality_preference: {{ nationality_preference }}
+languages_required: {{ languages_required }}
+notice_period: {{ notice_period }}
+
+JOB DESCRIPTION
+---------------
+{{ job_description }}
+
+PARSED CV (structured summary)
+==============================
+{{ parsed_cv_json }}
+
+CV TEXT
+=======
+{{ cv_text }}
+
+TASK
+====
+Score the five hard-filter signals on the rubric in the system
+instructions, using the job specification, the structured CV summary,
+and the raw CV text above. Output JSON only — no prose, no markdown
+fences.

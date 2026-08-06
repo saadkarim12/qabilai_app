@@ -1,0 +1,12 @@
+Hi {{ candidate_name }},
+
+Just a friendly reminder that your interview for the {{ job_title }} role{% if company_name %} at {{ company_name }}{% endif %} is still waiting to be scheduled.
+
+Pick a time that suits you here — it only takes a moment:
+
+{{ booking_url }}
+
+This link is personal to you, so please don't share it.
+
+Best regards,
+The Hiring Team

@@ -1,0 +1,32 @@
+Draft a bilingual job description (English + native Gulf Arabic) from the role
+spec below. Every field here is a signal candidates use to self-filter — reflect
+each one somewhere in the JD. Do NOT invent facts beyond what the spec implies.
+
+ROLE SPEC
+=========
+
+Title:           {{ title }}
+Hiring company:  {{ hiring_company }}
+Location:        {{ city }}, {{ country_display }}
+Employment type: {{ employment_type }}
+Work mode:       {{ work_mode }}
+Compensation:    {{ compensation }}
+Notice period:   {{ notice_period or '(not specified)' }}
+Min experience:  {{ min_experience_years }} year(s)
+Visa stance:     {{ visa_requirement or 'Open to all visas' }}
+Nationality:     {{ nationality_preference | join(', ') if nationality_preference else 'Any nationality' }}
+Languages req'd: {{ languages_required | join(', ') if languages_required else '(none specified)' }}
+
+Required skills:  {{ required_skills | join(', ') if required_skills else '(none listed)' }}
+Preferred skills: {{ preferred_skills | join(', ') if preferred_skills else '(none listed)' }}
+
+INSTRUCTIONS
+============
+- Lead the requirements with the {{ min_experience_years }}+ years of experience
+  and the Required skills; weave in the Preferred skills as "nice to have".
+- Include the salary ONLY if the Compensation line above gives a real band —
+  if it reads "(not specified)", omit salary entirely (never "competitive salary").
+- Write for a {{ city }}, {{ country_display }} hiring market.
+- The Arabic rendering must be written natively, not translated from the English.
+- Return both renderings via the structured output tool (job_description_en,
+  job_description_ar).
