@@ -13,6 +13,11 @@ Full design lives in [`docs/KABIL_AI_ARCHITECTURE.md`](docs/KABIL_AI_ARCHITECTUR
 work is delivered in numbered steps (the codebase references "Step 3.9",
 "Step 4.3", etc. — these map to that doc).
 
+**Before issuing any trial/external account, read
+[`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md)** — the system currently has
+no per-account data isolation (confirmed, not theoretical), so two unrelated
+logins see and can act on each other's jobs/candidates/applications today.
+
 ## Tech stack
 
 - **Python 3.12** (pinned `>=3.12,<3.13`; CI + Docker enforce it)
