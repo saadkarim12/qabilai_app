@@ -57,6 +57,33 @@ a scoping path that exists somewhere this audit didn't cover. **Worth
 re-testing directly before finalizing a fix**, in case it reveals a partial
 mechanism already in place.
 
+### Can `AuditLog` tell us if cross-tenant access has already happened?
+
+Checked directly (`src/db/models/audit_log.py`, `src/enums/audit.py`):
+
+- **Partially, for writes only.** `audit_logs` captures mutations —
+  `stage_changed`, `status_changed`, `manually_accepted/rejected`,
+  `bulk_upload`, `talent_pool_added/sourced`, `candidate_details_updated`,
+  `interview_scored` — each row has `user_id` (who did it), `entity_type` +
+  `entity_id` (what it touched), `before_state`/`after_state`. So it **is**
+  possible to audit for cross-tenant *tampering*: cross-reference an audit
+  row's `user_id` against the touched job's real `created_by` — a mismatch
+  means an account acted on data it shouldn't have been able to reach.
+- **No, for reads.** Simply viewing another account's job list, a candidate's
+  profile, or an application's detail leaves **no trace at all** — the audit
+  table has no concept of a read/view action. So it can't answer "has anyone
+  ever *looked at* data that wasn't theirs" — only "has anyone *changed*
+  something that wasn't theirs," and only from the point `audit_logs` writes
+  started being wired up (Step 4.2 per the enum's own docstring — worth
+  confirming that's fully live before relying on it for anything before that
+  point).
+
+Given the isolation gap above, a "did existing accounts ever cross paths"
+check via `audit_logs` (join `audit_logs.user_id` against the real owner of
+`audit_logs.entity_id`) is a reasonable one-time sanity check before opening
+trial accounts up further — cheap to run, and it's real evidence one way or
+the other, not a guess.
+
 ### The fix isn't "just add scoping everywhere"
 
 The existing shared-workspace behavior is almost certainly *intentional and
